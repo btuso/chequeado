@@ -39,6 +39,7 @@ dependencies {
 
 docker {
     dependsOn build
+    tags 'latest'
     name "${project.group}/${bootJar.baseName}:${bootJar.version}"
     files bootJar.archivePath
     buildArgs(['JAR_FILE': "${bootJar.archiveName}"])
