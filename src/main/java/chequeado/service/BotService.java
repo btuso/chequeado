@@ -4,9 +4,15 @@ import chequeado.MyLogger;
 import chequeado.connector.TelegramConnector;
 import chequeado.model.Message;
 import chequeado.model.PhotoSize;
+import chequeado.model.Sticker;
 import chequeado.model.SendMessage;
 import chequeado.model.SendPhoto;
-import chequeado.repository.ImageRepository;
+import chequeado.model.SendSticker;
+import chequeado.repository.MediaRepository;
+import chequeado.repository.model.Media;
+import chequeado.repository.model.PhotoMedia;
+import chequeado.repository.model.StickerMedia;
+import chequeado.repository.model.MediaType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,11 +35,11 @@ public class BotService {
     private static final String AWAITING_MEDIA_MESSAGE = "Esperando imagenes o stickers...";
 
     private final TelegramConnector connector;
-    private final ImageRepository repository;
+    private final MediaRepository repository;
 
     boolean awaitingMedia;
 
-    public BotService(TelegramConnector connector, @Qualifier("Filesystem") ImageRepository repository) {
+    public BotService(TelegramConnector connector, @Qualifier("Filesystem") MediaRepository repository) {
         this.connector = connector;
         this.repository = repository;
         this.awaitingMedia = false;
@@ -74,8 +80,9 @@ public class BotService {
         }
 
         logger.info("Adding sticker with file id: " + sticker.getFileId());
-        boolean persisted = repository.put(sticker.getFileId());
-        sendConfirmationMessage(persisted);
+        Media stickerMedia = new StickerMedia(sticker.getFileId());
+        boolean persisted = repository.put(stickerMedia);
+        sendConfirmationMessage(message, persisted);
     }
 
     public void addPhoto(Message message) {
@@ -86,8 +93,9 @@ public class BotService {
         }
 
         PhotoSize biggest = photos.get(photos.size() - 1);
-        boolean persisted = repository.put(biggest.getFileId());
-        sendConfirmationMessage(persisted);
+        Media photoMedia = new PhotoMedia(biggest.getFileId());
+        boolean persisted = repository.put(photoMedia);
+        sendConfirmationMessage(message, persisted);
     }
 
     private void sendConfirmationMessage(Message message, boolean success) {
@@ -112,21 +120,35 @@ public class BotService {
             connector.sendMessage(createReply(message, NO_REPLY_MESSAGE));
             return;
         }
-        if (!repository.hasImages()) {
+        if (!repository.hasMedia()) {
             connector.sendMessage(createReply(message, EMPTY_REPO_MESSAGE));
             return;
         }
 
-        String checkImage = repository.getAny();
-        connector.sendImage(createPhotoReply(message, checkImage));
+        Media checkMedia = repository.getAny();
+
+        // TODO create an abstract class for SendMedia and test Jackson serialization
+        if (checkMedia.getMediaType() == MediaType.PHOTO) {
+            connector.sendImage(createImageReply(message, checkMedia.getFileId()));
+        } else { // Sticker
+            connector.sendSticker(createStickerReply(message, checkMedia.getFileId()));
+        }
     }
 
-    private SendPhoto createPhotoReply(Message message, String fileId) {
+    private SendPhoto createImageReply(Message message, String fileId) {
         Long id = message.getChat().getId();
         SendPhoto sendPhoto = new SendPhoto(String.valueOf(id), fileId);
         sendPhoto.setDisableNotification(true);
         sendPhoto.setReplyToMessageId(message.getReplyToMessage().getMessageId());
         return sendPhoto;
+    }
+
+    private SendSticker createStickerReply(Message message, String fileId) {
+        Long id = message.getChat().getId();
+        SendSticker sendSticker = new SendSticker(String.valueOf(id), fileId);
+        sendSticker.setDisableNotification(true);
+        sendSticker.setReplyToMessageId(message.getReplyToMessage().getMessageId());
+        return sendSticker;
     }
 
     public void awaitNewMedia(Message message) {
