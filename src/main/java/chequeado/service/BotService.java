@@ -26,13 +26,17 @@ public class BotService {
 
     private static final String NO_REPLY_MESSAGE = "Que cosa?";
     private static final String EMPTY_REPO_MESSAGE = "No tengo imagenes jaja salu2";
+    private static final String AWAITING_MEDIA_MESSAGE = "Esperando imagenes o stickers...";
 
     private final TelegramConnector connector;
     private final ImageRepository repository;
 
+    boolean awaitingMedia;
+
     public BotService(TelegramConnector connector, @Qualifier("Filesystem") ImageRepository repository) {
         this.connector = connector;
         this.repository = repository;
+        this.awaitingMedia = false;
     }
 
     public void noOp(Message message) {
@@ -50,6 +54,30 @@ public class BotService {
         connector.sendMessage(sendMessage);
     }
 
+    public void addMedia(Message message) {
+        if (!awaitingMedia) {
+            return;
+        }
+
+        if (message.getSticker() != null) {
+            addSticker(message);
+        } else {
+            addPhoto(message);
+        }
+    }
+
+    public void addSticker(Message message) {
+        Sticker sticker = message.getSticker();
+        if (sticker == null) {
+            connector.sendMessage(createReply(message, createEmoji(PERSON_SHRUG_EMOJI)));
+            return;
+        }
+
+        logger.info("Adding sticker with file id: " + sticker.getFileId());
+        boolean persisted = repository.put(sticker.getFileId());
+        sendConfirmationMessage(persisted);
+    }
+
     public void addPhoto(Message message) {
         List<PhotoSize> photos = message.getPhoto();
         if (CollectionUtils.isEmpty(photos)) {
@@ -59,11 +87,12 @@ public class BotService {
 
         PhotoSize biggest = photos.get(photos.size() - 1);
         boolean persisted = repository.put(biggest.getFileId());
-        if (persisted) {
-            connector.sendMessage(createReply(message, createEmoji(OK_HAND_EMOJI)));
-        } else {
-            connector.sendMessage(createReply(message, createEmoji(THUMBS_DOWN_EMOJI)));
-        }
+        sendConfirmationMessage(persisted);
+    }
+
+    private void sendConfirmationMessage(Message message, boolean success) {
+        int emoji = success ? OK_HAND_EMOJI : THUMBS_DOWN_EMOJI;
+        connector.sendMessage(createReply(message, createEmoji(emoji)));
     }
 
     private SendMessage createReply(Message message, String text) {
@@ -99,4 +128,15 @@ public class BotService {
         sendPhoto.setReplyToMessageId(message.getReplyToMessage().getMessageId());
         return sendPhoto;
     }
+
+    public void awaitNewMedia(Message message) {
+        this.awaitingMedia = true;
+        connector.sendMessage(createReply(message, AWAITING_MEDIA_MESSAGE));
+    }
+
+    public void stopAwaitingMedia(Message message) {
+        this.awaitingMedia = false;
+        sendConfirmationMessage(message, true);
+    }
+
 }

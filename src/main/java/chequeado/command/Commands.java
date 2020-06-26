@@ -7,6 +7,8 @@ public enum Commands {
     CHECK("chequear"),
     IS_THIS_CHECKED("estoEstaChequeado?"),
     ADD_PHOTO("agregarFoto"),
+    ADD_MEDIA("agregarMedia"),
+    END_ADD_MEDIA("finAgregarMedia"),
     ECHO("echo")
     ;
 
