@@ -17,6 +17,7 @@ public class Message {
     @JsonProperty("reply_to_message")
     private Message replyToMessage;
     private List<PhotoSize> photo;
+    private Sticker sticker;
     private String text;
     private String caption;
 
@@ -82,6 +83,14 @@ public class Message {
 
     public void setCaption(String caption) {
         this.caption = caption;
+    }
+
+    public Sticker getSticker() {
+        return sticker;
+    }
+
+    public void setSticker(Sticker sticker) {
+        this.sticker = sticker;
     }
 
 }

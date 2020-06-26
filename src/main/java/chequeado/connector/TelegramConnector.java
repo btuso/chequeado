@@ -6,6 +6,7 @@ import chequeado.MyLogger;
 import chequeado.model.Message;
 import chequeado.model.SendMessage;
 import chequeado.model.SendPhoto;
+import chequeado.model.SendSticker;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
@@ -20,6 +21,7 @@ public class TelegramConnector {
     private static final String BASE_URL = "https://api.telegram.org/bot";
     private static final String SEND_MESSAGE = "/sendMessage";
     private static final String SEND_PHOTO = "/sendPhoto";
+    private static final String SEND_STICKER = "/sendSticker";
 
     private final String apiToken;
 
@@ -33,6 +35,10 @@ public class TelegramConnector {
 
     public void sendImage(SendPhoto message) {
         sendMessage(SEND_PHOTO, message);
+    }
+
+    public void sendSticker(SendSticker message) {
+        sendMessage(SEND_STICKER, message);
     }
 
     private void sendMessage(String endpoint, Object message){

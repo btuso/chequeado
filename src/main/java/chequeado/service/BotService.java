@@ -4,9 +4,15 @@ import chequeado.MyLogger;
 import chequeado.connector.TelegramConnector;
 import chequeado.model.Message;
 import chequeado.model.PhotoSize;
+import chequeado.model.Sticker;
 import chequeado.model.SendMessage;
 import chequeado.model.SendPhoto;
-import chequeado.repository.ImageRepository;
+import chequeado.model.SendSticker;
+import chequeado.repository.MediaRepository;
+import chequeado.repository.model.Media;
+import chequeado.repository.model.PhotoMedia;
+import chequeado.repository.model.StickerMedia;
+import chequeado.repository.model.MediaType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -26,13 +32,17 @@ public class BotService {
 
     private static final String NO_REPLY_MESSAGE = "Que cosa?";
     private static final String EMPTY_REPO_MESSAGE = "No tengo imagenes jaja salu2";
+    private static final String AWAITING_MEDIA_MESSAGE = "Esperando imagenes o stickers...";
 
     private final TelegramConnector connector;
-    private final ImageRepository repository;
+    private final MediaRepository repository;
 
-    public BotService(TelegramConnector connector, @Qualifier("Filesystem") ImageRepository repository) {
+    boolean awaitingMedia;
+
+    public BotService(TelegramConnector connector, @Qualifier("Filesystem") MediaRepository repository) {
         this.connector = connector;
         this.repository = repository;
+        this.awaitingMedia = false;
     }
 
     public void noOp(Message message) {
@@ -50,6 +60,31 @@ public class BotService {
         connector.sendMessage(sendMessage);
     }
 
+    public void addMedia(Message message) {
+        if (!awaitingMedia) {
+            return;
+        }
+
+        if (message.getSticker() != null) {
+            addSticker(message);
+        } else {
+            addPhoto(message);
+        }
+    }
+
+    public void addSticker(Message message) {
+        Sticker sticker = message.getSticker();
+        if (sticker == null) {
+            connector.sendMessage(createReply(message, createEmoji(PERSON_SHRUG_EMOJI)));
+            return;
+        }
+
+        logger.info("Adding sticker with file id: " + sticker.getFileId());
+        Media stickerMedia = new StickerMedia(sticker.getFileId());
+        boolean persisted = repository.put(stickerMedia);
+        sendConfirmationMessage(message, persisted);
+    }
+
     public void addPhoto(Message message) {
         List<PhotoSize> photos = message.getPhoto();
         if (CollectionUtils.isEmpty(photos)) {
@@ -58,12 +93,14 @@ public class BotService {
         }
 
         PhotoSize biggest = photos.get(photos.size() - 1);
-        boolean persisted = repository.put(biggest.getFileId());
-        if (persisted) {
-            connector.sendMessage(createReply(message, createEmoji(OK_HAND_EMOJI)));
-        } else {
-            connector.sendMessage(createReply(message, createEmoji(THUMBS_DOWN_EMOJI)));
-        }
+        Media photoMedia = new PhotoMedia(biggest.getFileId());
+        boolean persisted = repository.put(photoMedia);
+        sendConfirmationMessage(message, persisted);
+    }
+
+    private void sendConfirmationMessage(Message message, boolean success) {
+        int emoji = success ? OK_HAND_EMOJI : THUMBS_DOWN_EMOJI;
+        connector.sendMessage(createReply(message, createEmoji(emoji)));
     }
 
     private SendMessage createReply(Message message, String text) {
@@ -83,20 +120,45 @@ public class BotService {
             connector.sendMessage(createReply(message, NO_REPLY_MESSAGE));
             return;
         }
-        if (!repository.hasImages()) {
+        if (!repository.hasMedia()) {
             connector.sendMessage(createReply(message, EMPTY_REPO_MESSAGE));
             return;
         }
 
-        String checkImage = repository.getAny();
-        connector.sendImage(createPhotoReply(message, checkImage));
+        Media checkMedia = repository.getAny();
+
+        // TODO create an abstract class for SendMedia and test Jackson serialization
+        if (checkMedia.getMediaType() == MediaType.PHOTO) {
+            connector.sendImage(createImageReply(message, checkMedia.getFileId()));
+        } else { // Sticker
+            connector.sendSticker(createStickerReply(message, checkMedia.getFileId()));
+        }
     }
 
-    private SendPhoto createPhotoReply(Message message, String fileId) {
+    private SendPhoto createImageReply(Message message, String fileId) {
         Long id = message.getChat().getId();
         SendPhoto sendPhoto = new SendPhoto(String.valueOf(id), fileId);
         sendPhoto.setDisableNotification(true);
         sendPhoto.setReplyToMessageId(message.getReplyToMessage().getMessageId());
         return sendPhoto;
     }
+
+    private SendSticker createStickerReply(Message message, String fileId) {
+        Long id = message.getChat().getId();
+        SendSticker sendSticker = new SendSticker(String.valueOf(id), fileId);
+        sendSticker.setDisableNotification(true);
+        sendSticker.setReplyToMessageId(message.getReplyToMessage().getMessageId());
+        return sendSticker;
+    }
+
+    public void awaitNewMedia(Message message) {
+        this.awaitingMedia = true;
+        connector.sendMessage(createReply(message, AWAITING_MEDIA_MESSAGE));
+    }
+
+    public void stopAwaitingMedia(Message message) {
+        this.awaitingMedia = false;
+        sendConfirmationMessage(message, true);
+    }
+
 }

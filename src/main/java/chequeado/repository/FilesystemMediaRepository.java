@@ -13,59 +13,45 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import chequeado.repository.model.Media;
+
 @Repository
 @Qualifier("Filesystem")
-public class FilesystemImageRepository implements ImageRepository {
+public class FilesystemMediaRepository implements MediaRepository {
 
-    public static class Entry {
-        @JsonProperty("file_id")
-        private String fileId;
+    public static final String REPO_FILE = "/images/media.json";
 
-        public void setFileId(String fileId) {
-            this.fileId = fileId;
-        }
-
-        public String getFileId() {
-            return fileId;
-        }
-    }
-
-
-    public static final String REPO_FILE = "/images/images.json";
-
-    private static final MyLogger logger = MyLogger.logger(FilesystemImageRepository.class);
-    private final MemoryImageRepo memoryRepo;
+    private static final MyLogger logger = MyLogger.logger(FilesystemMediaRepository.class);
+    private final MemoryMediaRepo memoryRepo;
     private final ObjectMapper mapper;
 
-    public FilesystemImageRepository(MemoryImageRepo memoryRepo) throws IOException {
+    public FilesystemMediaRepository(MemoryMediaRepo memoryRepo) throws IOException {
         this.memoryRepo = memoryRepo;
         this.mapper = new ObjectMapper();
 
-        List<Entry> entries = loadEntries();
-        entries.stream().map(Entry::getFileId).forEach(memoryRepo::put);
+        List<Media> entries = loadEntries();
+        entries.forEach(memoryRepo::put);
         logger.info("Loaded {} entries from {}", entries.size(), REPO_FILE);
     }
 
-    private List<Entry> loadEntries() throws IOException {
+    private List<Media> loadEntries() throws IOException {
         File repoFile = new File(REPO_FILE);
         if (!repoFile.exists()) {
             return new ArrayList<>();
         }
 
         FileReader fileReader = new FileReader(repoFile);
-        List<Entry> entries = mapper.readValue(fileReader, new TypeReference<List<Entry>>() {});
+        List<Media> entries = mapper.readValue(fileReader, new TypeReference<List<Media>>() {});
         fileReader.close();
         return entries;
     }
 
     @Override
-    synchronized public boolean put(String fileId) {
-        memoryRepo.put(fileId);
+    synchronized public boolean put(Media media) {
+        memoryRepo.put(media);
         try {
-            List<Entry> entries = loadEntries();
-            Entry entry = new Entry();
-            entry.setFileId(fileId);
-            entries.add(entry);
+            List<Media> entries = loadEntries();
+            entries.add(media);
             writeEntries(entries);
             return true;
         } catch (IOException e) {
@@ -74,7 +60,7 @@ public class FilesystemImageRepository implements ImageRepository {
         return false;
     }
 
-    private void writeEntries(List<Entry> entries) throws IOException {
+    private void writeEntries(List<Media> entries) throws IOException {
         File file = new File(REPO_FILE);
         if (!file.exists()) {
             file.createNewFile();
@@ -83,12 +69,12 @@ public class FilesystemImageRepository implements ImageRepository {
     }
 
     @Override
-    public boolean hasImages() {
-        return memoryRepo.hasImages();
+    public boolean hasMedia() {
+        return memoryRepo.hasMedia();
     }
 
     @Override
-    public String getAny() {
+    public Media getAny() {
         return memoryRepo.getAny();
     }
 }
